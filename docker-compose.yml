@@ -80,6 +80,13 @@ services:
       - ./backups:/backups
     entrypoint: ["/bin/sh", "-c", "while true; do PGPASSWORD=$POSTGRES_PASSWORD pg_dump -h db -U $POSTGRES_USER $POSTGRES_DB > /backups/db_backup_$(date +%Y%m%d%H%M%S).sql; sleep 86400; done"]
 
+  redis:
+    image: redis
+    container_name: redis
+    ports:
+      - "6379:6379"
+
+
 volumes:
   postgres_data:
   backups:
