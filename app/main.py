@@ -11,13 +11,12 @@ from datetime import datetime, timedelta, timezone
 import httpx 
 import asyncio
 import time
-#slowapi imports 
-from slowapi import Limiter , _rate_limit_exceeded_handler
-from slowapi.util import get_remote_address
+# #slowapi imports 
+# from slowapi import Limiter , _rate_limit_exceeded_handler
+# from slowapi.util import get_remote_address
+# from slowapi.errors import RateLimitExceeded
 from fastapi.middleware.cors import CORSMiddleware
-from slowapi.errors import RateLimitExceeded
-#ip tracking import 
-#from starlette.requests import Request
+
 
 
 # Intialize of fastapi
@@ -30,8 +29,8 @@ class ShortenRequest(BaseModel):
     expiry_days: Optional[int] = 30
 
 #slowapi setup
-limiter = Limiter(key_func=get_remote_address)
-app.state.limiter = limiter
+# limiter = Limiter(key_func=get_remote_address)
+# app.state.limiter = limiter
 
 
 # CORS 
@@ -66,7 +65,7 @@ async def health_chk():
 
 @app.post("/shorten/")
 #@limiter.limit("10/minute")
-async def shorten_url(request:Request , payload: ShortenRequest,db:AsyncSession = Depends(get_db)):
+async def shorten_url(request: Request , payload: ShortenRequest,db:AsyncSession = Depends(get_db)):
     if payload.expiry_days not in [5,15,30]:
         payload.expiry_days = 30 # default period
     
@@ -112,13 +111,18 @@ async def get_url(short_url:str,request:Request,db:AsyncSession = Depends(get_db
     url_entry = await crud.get_url_by_short(db,short_url)
     if url_entry is None:
         raise HTTPException(status_code=404,detail="SHORT URL not FOUND")
+    if url_entry.expires_at < datetime.now(timezone.utc):
+        raise HTTPException(status_code=410, detail="Short URL has expired")
+
     # logging analytics into redis
     try:
         redis = await database.get_redis()
-        redis.rpush(f"analytics:{short_url}",
+        await redis.rpush(f"analytics:{short_url}",
                         str({
                             "ip": request.client.host,
-                            "timestamp":datetime.now(timezone.utc).isoformat()}))
+                            "timestamp":datetime.now(timezone.utc).isoformat(),
+                            "status": "success",
+                             "protection_mode": "none"   }))
     except Exception as e:
         print("reddis loggin failed: ",e)
 
@@ -169,42 +173,78 @@ async def redirect_with_protection(
     request : Request,
     db: AsyncSession = Depends(get_db)
 ):
+    
+
     protection_modes = request.query_params.get("protection","").split(",")
+    protection_modes = [mode.strip() for mode in protection_modes if mode.strip()]
     redis = await database.get_redis()
     client_ip = request.client.host
-
+#manual rate limiting logic using redis 
     if "rate_limit" in protection_modes:
-        identifier = get_remote_address(request)
-        try:
-            limiter.check(request,"20/second",identifier)
-        except RateLimitExceeded:
+        key = f"ratelimit:{client_ip}:{short_url}"
+        count = await redis.incr(key)
+        await redis.expire(key,1)
+        if count > 20:
+            await redis.rpush(f"analytics:{short_url}",str({
+                "ip": client_ip,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "status":"blocked",
+                "protection_mode": ",".join(protection_modes)}))
+            
             raise HTTPException(status_code=429,detail="Rate limit exceeded")
+
+        
+    
+    
     if "ip-block" in protection_modes:
         key = f"ddos:{client_ip}:{short_url}"
         count = await redis.incr(key)
         await redis.expire(key,60)
         if count > 50:
+            await redis.rpush(f"analytics:{short_url}", str({   
+               "ip": client_ip,
+               "timestamp": datetime.now(timezone.utc).isoformat(),
+               "status": "blocked",
+               "protection_mode": ",".join(protection_modes)
+            }))
             raise HTTPException(status_code=403,detail="ip blocked ")
         
+    
+    
     if "captcha" in protection_modes:
         token = request.headers.get("x-Captcha-Token")
         if token != "valid":
+            await redis.rpush(f"analytics:{short_url}", str({
+                "ip": client_ip,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "status": "blocked",
+                "protection_mode": ",".join(protection_modes)
+            }))
             raise HTTPException(status_code=403,detail="Captcha validation failed")
+    
+    
     url = await crud.get_url_by_short(db,short_url)
     if not url:
         raise HTTPException(status_code=404,detail="SHORT URL not found")
-    redis.rpush(f"analytics:{short_url}",str({
+    if url.expires_at < datetime.now(timezone.utc):
+        raise HTTPException(status_code=410, detail="Short URL has expired")
+
+    await redis.rpush(f"analytics:{short_url}",str({
         "ip":client_ip,
-        "timestamp":datetime.now(timezone.utc).isoformat()
+        "timestamp":datetime.now(timezone.utc).isoformat(),
+        "status":"success",
+        "protection_mode": ",".join(protection_modes)
+
     })) 
     return RedirectResponse(url=url.long_url)
     
 #DDoS ATTACK SIMULATION FEATURE
 @app.post("/simulate-ddos/{short_url}")
-async def simulate_ddos(short_url: str, count: int = 100 , protection: str = "none", request: Request=None):
+async def simulate_ddos(short_url: str, count: int = 100 , protection: str = "none"):
     if count>1000:
         raise HTTPException(status_code=400, detail="max 1000 requests  allowed")
-
+     
+    
     protection_modes = protection.split(",")
     print(f"[DDoS Simulation] Protection Mode: {protection}")
 
@@ -212,7 +252,10 @@ async def simulate_ddos(short_url: str, count: int = 100 , protection: str = "no
     success =0
     failed =0
 
-    client_ip = request.client.host
+    #client_ip = request.client.host
+
+
+
 
     async def send_request(client,short_url):
         nonlocal success, failed
@@ -238,9 +281,93 @@ async def simulate_ddos(short_url: str, count: int = 100 , protection: str = "no
     elapsed = round(time.time() - start_time,2)  
 
     return {
-        "message": f"simulated  {count} requests to /redi/{short_url}",
+        "message": f"simulated {count} requests to /redirect/{short_url}",
         "success": success,
         "failed" : failed,
         "time_taken_sec": elapsed,
         "protection_mode" : protection
     }
+
+
+
+@app.get("/analytics/{short_url}")
+async def get_analytics(short_url:str):
+    redis = await database.get_redis()
+    try:
+        logs = await redis.lrange(f"analytics:{short_url}",0,-1)
+        protection_summary ={}
+        # total_request = len(logs)
+
+        # blocked_request =0
+        # success_request =0
+        # last_accessed = None
+        # protection_mode = None
+        
+        for entry in logs:
+            try:
+                data = eval(entry)
+                raw_mode = data.get("protection_mode", "none")
+                modes = [m.strip().replace("-", "_") for m in raw_mode.split(",") if m.strip()]
+                if not modes:
+                    modes = ["none"]
+
+                status = data.get("status","success")
+                timestamp = data.get("timestamp")
+
+
+
+
+                for mode in modes:
+                    if mode not in protection_summary:
+                        protection_summary[mode] ={
+                            "total": 0,
+                            "success": 0,
+                            "blocked": 0,
+                            "last_accessed": data.get("timestamp", None)
+
+                        }
+                    
+                    protection_summary[mode]["total"]+=1
+                    
+                    if data.get("status") == "blocked":
+                        protection_summary[mode]["blocked"] +=1
+                    else:
+                        protection_summary[mode]["success"] +=1
+                    
+                    # last_accessed = data.get("timestamp",last_accessed)
+                    # protection_mode =  data.get("protection_mode",protection_mode)
+                    current_ts = data.get("timestamp")
+                    if current_ts:
+                        protection_summary[mode]["last_accessed"] = current_ts
+            except Exception as e:
+                print("analtics parsing error: ",e)
+        return {
+            "short_url": short_url,
+            "analytics": protection_summary
+            # "total_request": total_request,
+            # "success_request": success_request,
+            # "blocked_request": blocked_request,
+            # "last_accessed": last_accessed,
+            # "protection_mode": protection_mode or "none"
+
+        }
+
+    except Exception as e:
+        print("redis analytics error: ",e )
+        raise HTTPException(status_code=500,detail="Failed to fetch Analytics")
+
+@app.post("/reset-protection/{short_url}")
+async def reset_protection(short_url: str, request: Request):
+    redis = await database.get_redis()
+    client_ip = request.client.host
+    try:
+        await redis.delete(f"ddos:{client_ip}:{short_url}")
+        await redis.delete(f"analytics:{short_url}")
+        return {"message":f"protection and analytics reset for {short_url}"}
+    except Exception as e:
+        print("reset protection failed: ",e )
+        raise HTTPException(status_code=500,detail="reset failed")
+
+    
+
+    

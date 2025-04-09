@@ -6,7 +6,6 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engin
 
 from sqlalchemy.orm import declarative_base, sessionmaker
 
-
 #loading env varianles
 load_dotenv()
 POSTGRES_USER = os.getenv("POSTGRES_USER",'sweyam')
@@ -16,6 +15,7 @@ POSTGRES_HOST = os.getenv("POSTGRES_HOST", "url_shortener_db")  # Default to 'pg
 REDIS_HOST = os.getenv("REDIS_HOST", "redis")  # Default to 'pgbouncer' if not set
 POSTGRES_PORT = os.getenv("POSTGRES_PORT", "5432")  # Default to 6432
 REDIS_PORT = os.getenv("REDIS_PORT", "6379")  # Default to 6432
+
 
 
 # DEBUG: Print to check if variables are loaded correctly
@@ -65,9 +65,15 @@ async def get_db():
 REDIS_HOST = os.getenv("REDIS_HOST","redis")
 REDIS_PORT = int(os.getenv("REDIS_PORT",6379))
 
-async def get_redis():
-    redis = await aioredis.from_url(f"redis://{REDIS_HOST}:{REDIS_PORT}",decode_responses=True)
-    return redis
+
+shared_redis = aioredis.from_url("redis://redis:6379",decode_responses=True)
+
+def get_redis():
+    return shared_redis
+
+# async def get_redis():
+#     redis = await aioredis.from_url(f"redis://{REDIS_HOST}:{REDIS_PORT}",decode_responses=True)
+#     return redis
 
 async def test_redis_connection():
     try:
@@ -88,8 +94,9 @@ async def test_db_connection():
         print(e)
 
 if __name__ == "__main__":
-    asyncio.run(test_redis_connection()) # check redis connection   
+     
     try:
+        asyncio.run(test_redis_connection()) # check redis connection 
         asyncio.run(test_db_connection()) # checks db:postgres connection
     except RuntimeError:
         print("async event loop already running. Skipping test conn")
