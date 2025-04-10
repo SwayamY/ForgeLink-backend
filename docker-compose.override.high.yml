@@ -1,0 +1,30 @@
+
+
+services:
+  api:
+    deploy:
+      resources:
+        limits:
+          cpus: '1.5'
+          memory: 2G
+
+  locust:
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1.5G
+
+  db:
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+
+  redis:
+    deploy:
+      resources:
+        limits:
+          cpus: '0.8'
+          memory: 512M

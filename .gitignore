@@ -27,12 +27,20 @@ docker-compose.override.yml
 .DS_Store
 Thumbs.db
 
-# Node Modules (if using frontend)  
-node_modules/  
-package-lock.json  
+# Node Modules (if using frontend)
+node_modules/
+package-lock.json
 
-# Build Artifacts  
-dist/  
+# Build Artifacts
+dist/
 build/
 
+# Backups
 backups/
+
+# Locust-related files (ignore except locustfile.py)
+*.json
+*.html
+.locust/
+*.log
+results/

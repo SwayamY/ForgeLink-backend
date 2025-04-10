@@ -85,7 +85,25 @@ services:
     container_name: redis
     ports:
       - "6379:6379"
+<<<<<<< Updated upstream
+=======
+    
+  locust:
+    image: locustio/locust
+    container_name: locust
+    depends_on:
+      - api
+    ports:
+      - 8089:8089
+    volumes:
+      - ./locust:/mnt/locust
+    working_dir: /mnt/locust
+>>>>>>> Stashed changes
 
+    command: >
+      -f locustfile.py
+      --host http://api:8000
+    restart: always
 
 volumes:
   postgres_data:
