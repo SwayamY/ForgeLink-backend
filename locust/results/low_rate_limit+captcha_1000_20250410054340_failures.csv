@@ -1,0 +1,2 @@
+Method,Name,Error,Occurrences
+GET,/redirect/str,HTTPError('500 Server Error: Internal Server Error for url: /redirect/str'),61
