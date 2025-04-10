@@ -172,22 +172,6 @@ async def redirect_with_protection(
     protection_modes = request.query_params.get("protection","").split(",")
     redis = await database.get_redis()
     client_ip = request.client.host
-<<<<<<< Updated upstream
-=======
-#manual rate limiting logic using redis 
-    if "rate_limit" in protection_modes:
-        key = f"ratelimit:{client_ip}:{short_url}"
-        count = await redis.incr(key)
-        await redis.expire(key,1)
-        if count > 70:
-            await redis.rpush(f"analytics:{short_url}",str({
-                "ip": client_ip,
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-                "status":"blocked",
-                "protection_mode": ",".join(protection_modes)}))
-            
-            raise HTTPException(status_code=429,detail="Rate limit exceeded")
->>>>>>> Stashed changes
 
     if "rate_limit" in protection_modes:
         identifier = get_remote_address(request)
@@ -199,17 +183,7 @@ async def redirect_with_protection(
         key = f"ddos:{client_ip}:{short_url}"
         count = await redis.incr(key)
         await redis.expire(key,60)
-<<<<<<< Updated upstream
         if count > 50:
-=======
-        if count > 90:
-            await redis.rpush(f"analytics:{short_url}", str({   
-               "ip": client_ip,
-               "timestamp": datetime.now(timezone.utc).isoformat(),
-               "status": "blocked",
-               "protection_mode": ",".join(protection_modes)
-            }))
->>>>>>> Stashed changes
             raise HTTPException(status_code=403,detail="ip blocked ")
         
     if "captcha" in protection_modes:
