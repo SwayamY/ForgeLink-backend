@@ -1,0 +1,3 @@
+Method,Name,Error,Occurrences
+GET,/redirect/str,"ConnectionResetError(104, 'Connection reset by peer')",1
+GET,/redirect/str,HTTPError('500 Server Error: Internal Server Error for url: /redirect/str'),68

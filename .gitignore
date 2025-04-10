@@ -44,4 +44,3 @@ backups/
 .locust/
 *.log
 results/
-results

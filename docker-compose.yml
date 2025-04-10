@@ -85,9 +85,11 @@ services:
     container_name: redis
     ports:
       - "6379:6379"
-<<<<<<< Updated upstream
-=======
-    
+    volumes:
+      - redis_data:/data
+    command: ["redis-server","--save","60","1","--loglevel","warning"]
+
+
   locust:
     image: locustio/locust
     container_name: locust
@@ -98,8 +100,6 @@ services:
     volumes:
       - ./locust:/mnt/locust
     working_dir: /mnt/locust
->>>>>>> Stashed changes
-
     command: >
       -f locustfile.py
       --host http://api:8000
@@ -108,3 +108,4 @@ services:
 volumes:
   postgres_data:
   backups:
+  redis_data:
