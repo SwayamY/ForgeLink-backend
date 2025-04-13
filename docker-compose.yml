@@ -27,7 +27,7 @@ services:
     ports:
       - "127.0.0.1:5432:5432" # Only allow local access
     healthcheck:
-      test: ["CMD", "pg_isready", "-U", "sweyam"]
+      test: ["CMD", "pg_isready", "-U", "sweyam","-d","sweyam"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -103,6 +103,7 @@ services:
     command: >
       -f locustfile.py
       --host http://api:8000
+      --run-time 3m
     restart: always
 
 volumes:

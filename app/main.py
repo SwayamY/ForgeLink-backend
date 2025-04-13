@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends ,HTTPException, Request #  requests of ip tracking
+from fastapi import FastAPI, Depends ,HTTPException, Request   #  requests of ip tracking
 from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from app import crud,models,database #using databse.get_redis for redis
@@ -9,11 +9,14 @@ from typing import Optional , List
 import traceback
 from datetime import datetime, timedelta, timezone
 import httpx 
-import asyncio
+import asyncio 
 import time
-#slowapi imports 
-from slowapi import Limiter , _rate_limit_exceeded_handler
-from slowapi.util import get_remote_address
+import os
+
+# #slowapi imports 
+# from slowapi import Limiter , _rate_limit_exceeded_handler
+# from slowapi.util import get_remote_address
+# from slowapi.errors import RateLimitExceeded
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi.errors import RateLimitExceeded
 #ip tracking import 
@@ -28,6 +31,12 @@ class ShortenRequest(BaseModel):
     long_url: str
     short_url: Optional[str] = None
     expiry_days: Optional[int] = 30
+    
+    
+# schema of env update 
+class ModeRequest(BaseModel):
+    mode: str
+
 
 #slowapi setup
 limiter = Limiter(key_func=get_remote_address)
@@ -186,6 +195,10 @@ async def redirect_with_protection(
         if count > 50:
             raise HTTPException(status_code=403,detail="ip blocked ")
         
+
+        
+    
+    
     if "captcha" in protection_modes:
         token = request.headers.get("x-Captcha-Token")
         if token != "valid":
@@ -193,6 +206,11 @@ async def redirect_with_protection(
     url = await crud.get_url_by_short(db,short_url)
     if not url:
         raise HTTPException(status_code=404,detail="SHORT URL not found")
+    if url.expires_at < datetime.now(timezone.utc):
+        raise HTTPException(status_code=410, detail="Short URL has expired")
+    if "none" in protection_modes:
+        return {"message": "No protection applied", "long_url": url.long_url}
+
     redis.rpush(f"analytics:{short_url}",str({
         "ip":client_ip,
         "timestamp":datetime.now(timezone.utc).isoformat()
@@ -244,3 +262,123 @@ async def simulate_ddos(short_url: str, count: int = 100 , protection: str = "no
         "time_taken_sec": elapsed,
         "protection_mode" : protection
     }
+
+
+
+
+@app.get("/analytics/{short_url}")
+async def get_analytics(short_url:str):
+    redis = await database.get_redis()
+    try:
+        logs = await redis.lrange(f"analytics:{short_url}",0,-1)
+        protection_summary ={}
+        # total_request = len(logs)
+
+        # blocked_request =0
+        # success_request =0
+        # last_accessed = None
+        # protection_mode = None
+        
+        for entry in logs:
+            try:
+                data = eval(entry)
+                raw_mode = data.get("protection_mode", "none")
+                modes = [m.strip().replace("-", "_") for m in raw_mode.split(",") if m.strip()]
+                if not modes:
+                    modes = ["none"]
+
+                status = data.get("status","success")
+                timestamp = data.get("timestamp")
+
+
+
+
+                for mode in modes:
+                    if mode not in protection_summary:
+                        protection_summary[mode] ={
+                            "total": 0,
+                            "success": 0,
+                            "blocked": 0,
+                            "last_accessed": data.get("timestamp", None)
+
+                        }
+                    
+                    protection_summary[mode]["total"]+=1
+                    
+                    if status == "blocked":
+                        protection_summary[mode]["blocked"] +=1
+                    else:
+                        protection_summary[mode]["success"] +=1
+                    
+                    # last_accessed = data.get("timestamp",last_accessed)
+                    # protection_mode =  data.get("protection_mode",protection_mode)
+                    if timestamp > protection_summary[mode]["last_accessed"]:
+                        protection_summary[mode]["last_accessed"] = timestamp
+
+            except Exception as e:
+                print("analytics parsing error: ",e)
+        return {
+            "short_url": short_url,
+            "analytics": protection_summary
+            # "total_request": total_request,
+            # "success_request": success_request,
+            # "blocked_request": blocked_request,
+            # "last_accessed": last_accessed,
+            # "protection_mode": protection_mode or "none"
+
+        }
+
+    except Exception as e:
+        print("redis analytics error: ",e )
+        raise HTTPException(status_code=500,detail="Failed to fetch Analytics")
+
+
+@app.post("/reset-protection/{short_url}")
+async def reset_protection(short_url: str, request: Request):
+    redis = await database.get_redis()
+    client_ip = request.client.host
+    try:
+        await redis.delete(f"ddos:{client_ip}:{short_url}")
+        await redis.delete(f"analytics:{short_url}")
+        return {"message":f"protection and analytics reset for {short_url}"}
+    except Exception as e:
+        print("reset protection failed: ",e )
+        raise HTTPException(status_code=500,detail="reset failed")
+    
+
+@app.post("/set-mode")
+async def set_mode(data: ModeRequest):
+    mode = data.mode
+    try:
+        # Open the .env file in read-write mode
+        env_path = os.path.join(os.path.dirname(__file__), "..", ".env")
+        env_path = os.path.abspath(env_path)  # absolute path 
+        print(f"Trying to open .env at: {env_path}")
+
+
+        with open(env_path, "r+") as f:
+            lines = f.readlines()
+            f.seek(0)
+            updated = False
+
+            # Loop through lines and update LOCUST_PROTECTION_MODE if found
+            for line in lines:
+                if line.startswith("LOCUST_PROTECTION_MODE="):
+                    f.write(f"LOCUST_PROTECTION_MODE={mode}\n")
+                    updated = True
+                else:
+                    f.write(line)
+            
+            # If LOCUST_PROTECTION_MODE was not found, append it
+            if not updated:
+                f.write(f"LOCUST_PROTECTION_MODE={mode}\n")
+
+            f.truncate()  # Ensure file is truncated to the correct size after writing
+
+        return {"message": "Mode updated successfully", "mode": mode}
+
+    except Exception as e:
+        print("Error occurred while updating .env file:")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to update mode: {str(e)}")
+
