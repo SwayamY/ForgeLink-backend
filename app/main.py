@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends ,HTTPException, Request #  requests of ip tracking
+from fastapi import FastAPI, Depends ,HTTPException, Request   #  requests of ip tracking
 from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from app import crud,models,database #using databse.get_redis for redis
@@ -9,8 +9,10 @@ from typing import Optional , List
 import traceback
 from datetime import datetime, timedelta, timezone
 import httpx 
-import asyncio
+import asyncio 
 import time
+import os
+
 # #slowapi imports 
 # from slowapi import Limiter , _rate_limit_exceeded_handler
 # from slowapi.util import get_remote_address
@@ -27,6 +29,12 @@ class ShortenRequest(BaseModel):
     long_url: str
     short_url: Optional[str] = None
     expiry_days: Optional[int] = 30
+    
+    
+# schema of env update 
+class ModeRequest(BaseModel):
+    mode: str
+
 
 #slowapi setup
 # limiter = Limiter(key_func=get_remote_address)
@@ -208,6 +216,8 @@ async def redirect_with_protection(
             }))
             raise HTTPException(status_code=403,detail="ip blocked ")
         
+
+        
     
     
     if "captcha" in protection_modes:
@@ -227,6 +237,8 @@ async def redirect_with_protection(
         raise HTTPException(status_code=404,detail="SHORT URL not found")
     if url.expires_at < datetime.now(timezone.utc):
         raise HTTPException(status_code=410, detail="Short URL has expired")
+    if "none" in protection_modes:
+        return {"message": "No protection applied", "long_url": url.long_url}
 
     redis.rpush(f"analytics:{short_url}",str({
         "ip":client_ip,
@@ -290,6 +302,7 @@ async def simulate_ddos(short_url: str, count: int = 100 , protection: str = "no
         "time_taken_sec": elapsed,
         "protection_mode" : protection
     }
+
 
 
 
@@ -359,6 +372,7 @@ async def get_analytics(short_url:str):
         print("redis analytics error: ",e )
         raise HTTPException(status_code=500,detail="Failed to fetch Analytics")
 
+
 @app.post("/reset-protection/{short_url}")
 async def reset_protection(short_url: str, request: Request):
     redis = await database.get_redis()
@@ -370,7 +384,41 @@ async def reset_protection(short_url: str, request: Request):
     except Exception as e:
         print("reset protection failed: ",e )
         raise HTTPException(status_code=500,detail="reset failed")
-
     
 
-    
+@app.post("/set-mode")
+async def set_mode(data: ModeRequest):
+    mode = data.mode
+    try:
+        # Open the .env file in read-write mode
+        env_path = os.path.join(os.path.dirname(__file__), "..", ".env")
+        env_path = os.path.abspath(env_path)  # absolute path 
+        print(f"Trying to open .env at: {env_path}")
+
+
+        with open(env_path, "r+") as f:
+            lines = f.readlines()
+            f.seek(0)
+            updated = False
+
+            # Loop through lines and update LOCUST_PROTECTION_MODE if found
+            for line in lines:
+                if line.startswith("LOCUST_PROTECTION_MODE="):
+                    f.write(f"LOCUST_PROTECTION_MODE={mode}\n")
+                    updated = True
+                else:
+                    f.write(line)
+            
+            # If LOCUST_PROTECTION_MODE was not found, append it
+            if not updated:
+                f.write(f"LOCUST_PROTECTION_MODE={mode}\n")
+
+            f.truncate()  # Ensure file is truncated to the correct size after writing
+
+        return {"message": "Mode updated successfully", "mode": mode}
+
+    except Exception as e:
+        print("Error occurred while updating .env file:")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to update mode: {str(e)}")
+

@@ -19,3 +19,10 @@ services:
         limits:
           memory: 256M
           cpus: "0.20"
+  
+  locust:
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 256M
