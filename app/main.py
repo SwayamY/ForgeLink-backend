@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends ,HTTPException, Request   #  requests of ip tracking
+from fastapi import FastAPI, Depends ,HTTPException, Request , Response  #  requests of ip tracking
 from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from app import crud,models,database #using databse.get_redis for redis
@@ -64,6 +64,12 @@ async def get_db():
 @app.get("/")
 async def read_root():
     return {"message": "URL Shortener API is running!"}
+
+
+@app.get("/favicon.ico")
+async def favicon():
+    return Response(status_code=204)
+
 
 @app.get("/healthz")
 async def health_chk():
