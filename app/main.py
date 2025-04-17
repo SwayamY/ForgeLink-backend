@@ -42,12 +42,12 @@ class ModeRequest(BaseModel):
 
 
 # CORS 
-origins = ["https://forgelink.netlify.app","https://linkforge.duckdns.org"]
+origins = ["https://forgelink.netlify.app"]
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
-    allow_credentials=False,
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
