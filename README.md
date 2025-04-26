@@ -23,7 +23,7 @@ All services run as Docker containers—no single-service compromises.
 ---
 
 ## 🏗️ Architecture & Infrastructure
-
+```
   [ Netlify Frontend ]
            │
            ▼ (HTTPS)
@@ -45,7 +45,7 @@ All services run as Docker containers—no single-service compromises.
  │ │           │ │(Storage)││
  │ └───────────┘ └─────────┘│
  └──────────────────────────┘
-
+```
 - DNS for the backend is managed via **DuckDNS** (dynamic A-record) pointing to the GCP VM  
 - All services communicate over an isolated Docker network; only the redirect endpoint (`/simulate-ddos/{short_url}`) is targeted   by the internal DDoS simulator  
 
@@ -82,7 +82,7 @@ This setup showcases not only backend engineering but full cloud-consultancy ski
 
 📁 1. Clone the Backend Repository
     ```bash
-    git clone https://github.com/SwayamY/LinkForge-Backend.git
+    git clone https://github.com/SwayamY/ForgeLink-backend.git
     cd LinkForge-Backend
     ```
 
