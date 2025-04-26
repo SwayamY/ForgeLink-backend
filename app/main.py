@@ -18,9 +18,7 @@ import os
 # from slowapi.util import get_remote_address
 # from slowapi.errors import RateLimitExceeded
 from fastapi.middleware.cors import CORSMiddleware
-from slowapi.errors import RateLimitExceeded
-#ip tracking import 
-#from starlette.requests import Request
+
 
 
 # Intialize of fastapi
@@ -39,8 +37,8 @@ class ModeRequest(BaseModel):
 
 
 #slowapi setup
-limiter = Limiter(key_func=get_remote_address)
-app.state.limiter = limiter
+# limiter = Limiter(key_func=get_remote_address)
+# app.state.limiter = limiter
 
 
 # CORS 
@@ -49,7 +47,7 @@ origins = ["https://forgelink.netlify.app"]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
-    allow_credentials=False,
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -82,7 +80,7 @@ async def health_chk():
 
 @app.post("/shorten/")
 #@limiter.limit("10/minute")
-async def shorten_url(request:Request , payload: ShortenRequest,db:AsyncSession = Depends(get_db)):
+async def shorten_url(request: Request , payload: ShortenRequest,db:AsyncSession = Depends(get_db)):
     if payload.expiry_days not in [5,15,30]:
         payload.expiry_days = 30 # default period
     
@@ -128,13 +126,18 @@ async def get_url(short_url:str,request:Request,db:AsyncSession = Depends(get_db
     url_entry = await crud.get_url_by_short(db,short_url)
     if url_entry is None:
         raise HTTPException(status_code=404,detail="SHORT URL not FOUND")
+    if url_entry.expires_at < datetime.now(timezone.utc):
+        raise HTTPException(status_code=410, detail="Short URL has expired")
+
     # logging analytics into redis
     try:
         redis = await database.get_redis()
         redis.rpush(f"analytics:{short_url}",
                         str({
                             "ip": request.client.host,
-                            "timestamp":datetime.now(timezone.utc).isoformat()}))
+                            "timestamp":datetime.now(timezone.utc).isoformat(),
+                            "status": "success",
+                             "protection_mode": "none"   }))
     except Exception as e:
         print("reddis loggin failed: ",e)
 
@@ -185,21 +188,39 @@ async def redirect_with_protection(
     request : Request,
     db: AsyncSession = Depends(get_db)
 ):
+    
+
     protection_modes = request.query_params.get("protection","").split(",")
+    protection_modes = [mode.strip() for mode in protection_modes if mode.strip()]
     redis = await database.get_redis()
     client_ip = request.client.host
 
+
+#manual rate limiting logic using redis 
     if "rate_limit" in protection_modes:
-        identifier = get_remote_address(request)
-        try:
-            limiter.check(request,"20/second",identifier)
-        except RateLimitExceeded:
+        key = f"ratelimit:{client_ip}:{short_url}"
+        count = await redis.incr(key)
+        await redis.expire(key,1)
+        if count > 70:
+            redis.rpush(f"analytics:{short_url}",str({
+                "ip": client_ip,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "status":"blocked",
+                "protection_mode": ",".join(protection_modes)}))
+            
             raise HTTPException(status_code=429,detail="Rate limit exceeded")
+        
     if "ip-block" in protection_modes:
         key = f"ddos:{client_ip}:{short_url}"
         count = await redis.incr(key)
         await redis.expire(key,60)
-        if count > 50:
+        if count == 91:
+            await redis.rpush(f"analytics:{short_url}", str({   
+               "ip": client_ip,
+               "timestamp": datetime.now(timezone.utc).isoformat(),
+               "status": "blocked",
+               "protection_mode": ",".join(protection_modes)
+            }))
             raise HTTPException(status_code=403,detail="ip blocked ")
         
 
@@ -209,7 +230,15 @@ async def redirect_with_protection(
     if "captcha" in protection_modes:
         token = request.headers.get("x-Captcha-Token")
         if token != "valid":
+            redis.rpush(f"analytics:{short_url}", str({
+                "ip": client_ip,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "status": "blocked",
+                "protection_mode": ",".join(protection_modes)
+            }))
             raise HTTPException(status_code=403,detail="Captcha validation failed")
+    
+    
     url = await crud.get_url_by_short(db,short_url)
     if not url:
         raise HTTPException(status_code=404,detail="SHORT URL not found")
@@ -220,16 +249,24 @@ async def redirect_with_protection(
 
     redis.rpush(f"analytics:{short_url}",str({
         "ip":client_ip,
-        "timestamp":datetime.now(timezone.utc).isoformat()
+        "timestamp":datetime.now(timezone.utc).isoformat(),
+        "status":"success",
+        "protection_mode": ",".join(protection_modes)
+
     })) 
-    return RedirectResponse(url=url.long_url)
+    return {
+    "message": "Redirect simulation successful",
+    "long_url": url.long_url,
+    "note": "No real redirect performed to avoid external DDoS attack"}
+
     
 #DDoS ATTACK SIMULATION FEATURE
 @app.post("/simulate-ddos/{short_url}")
-async def simulate_ddos(short_url: str, count: int = 100 , protection: str = "none", request: Request=None):
+async def simulate_ddos(short_url: str, count: int = 100 , protection: str = "none"):
     if count>1000:
         raise HTTPException(status_code=400, detail="max 1000 requests  allowed")
-
+     
+    
     protection_modes = protection.split(",")
     print(f"[DDoS Simulation] Protection Mode: {protection}")
 
@@ -237,7 +274,10 @@ async def simulate_ddos(short_url: str, count: int = 100 , protection: str = "no
     success =0
     failed =0
 
-    client_ip = request.client.host
+    #client_ip = request.client.host
+
+
+
 
     async def send_request(client,short_url):
         nonlocal success, failed
@@ -263,7 +303,7 @@ async def simulate_ddos(short_url: str, count: int = 100 , protection: str = "no
     elapsed = round(time.time() - start_time,2)  
 
     return {
-        "message": f"simulated  {count} requests to /redi/{short_url}",
+        "message": f"simulated {count} requests to /redirect/{short_url}",
         "success": success,
         "failed" : failed,
         "time_taken_sec": elapsed,

@@ -45,3 +45,50 @@ backups/
 *.log
 results/
 results
+
+# Python Bytecode & Cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual Environment
+venv/
+.env
+
+# Logs & Debugging
+*.log
+logs/
+
+# Database & Credentials
+*.sqlite3
+db.sqlite3
+.env
+
+# Docker Ignore
+*.env
+docker-compose.override.yml
+
+# Editor & OS-specific Files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Node Modules (if using frontend)
+node_modules/
+package-lock.json
+
+# Build Artifacts
+dist/
+build/
+
+# Backups
+backups/
+
+# Locust-related files (ignore except locustfile.py)
+*.json
+*.html
+.locust/
+*.log
+results/
