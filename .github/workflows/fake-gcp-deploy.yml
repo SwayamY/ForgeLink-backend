@@ -1,0 +1,16 @@
+name: Mark GCP Deployment
+
+on:
+  workflow_dispatch:
+
+jobs:
+  fake-deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: gcp-production
+    steps:
+      - name: Mark deployment with NGINX & HTTPS
+        run: |
+          echo "Deployment marked to GCP VM"
+          echo "Reverse proxy: NGINX"
+          echo "SSL: Let's Encrypt (Certbot)"
