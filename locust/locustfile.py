@@ -10,7 +10,7 @@ class DDoSUser(HttpUser):
 
     @task
     def attack_redirect(self):
-        short_url = os.getenv("SHORT_URL","str")  
+        short_url = os.getenv("SHORT_URL","string")  
         headers = {}
 
         query = ""
