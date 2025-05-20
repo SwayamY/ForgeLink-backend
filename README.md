@@ -145,7 +145,7 @@ From a DevOps and cloud consultancy perspective, this project reflects hands-on 
 
 ---
 
-## 📌 TL;DR for Recruiters
+## 📌 Summary for Recruiters
 
 I'm applying for cloud consultancy, DevOps, and backend+DevOps internship roles, and this project demonstrates my readiness for those domains.
 ForgeLink simulates a real-world, production-grade backend system featuring:
@@ -155,7 +155,7 @@ ForgeLink simulates a real-world, production-grade backend system featuring:
 - Built-in DDoS protection modes (rate-limit, IP-block, CAPTCHA)
 - Real-time metrics via Redis, database logging with PostgreSQL, and internal load-testing using Locust
 The project reflects hands-on work across the stack—from cloud setup to secure service communication and traffic protection—aligned with what’s expected in modern DevOps and backend roles.
-
+[Portfolio](https://swayamy.github.io/)
 ---
 
 🔗 For further inquiries, collaboration opportunities, or DevOps/backend roles, feel free to connect with me on 
