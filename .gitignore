@@ -92,3 +92,8 @@ backups/
 .locust/
 *.log
 results/
+
+.github_ci
+
+*.pem
+*.key
