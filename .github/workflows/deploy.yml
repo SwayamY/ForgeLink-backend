@@ -18,6 +18,7 @@ jobs:
           port: 22
           script: |
             set -e
+            ssh-keyscan github.com >> ~/.ssh/known_hosts
             cd ~/url-shortener-/
             sudo git pull origin main
             sudo docker compose down
