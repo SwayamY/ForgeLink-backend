@@ -21,6 +21,8 @@ jobs:
             mkdir -p ~/.ssh
             ssh-keyscan github.com >> ~/.ssh/known_hosts
             cd ~/url-shortener-/
+            git stash --include-untracked || true
             git pull --rebase origin main
+            git stash pop || true
             sudo docker-compose down
             sudo docker-compose up -d 
